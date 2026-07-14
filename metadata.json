@@ -1,0 +1,8 @@
+{
+  "name": "G-MED 3.0",
+  "description": "G-MED 3.0 Orthopedic Ward Management App & Mini-EMR",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

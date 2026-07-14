@@ -1,0 +1,31 @@
+{
+  "name": "g-med-3.0",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@google/genai": "^1.33.0",
+    "d3": "^7.9.0",
+    "lucide-react": "^0.561.0",
+    "marked": "^18.0.4",
+    "motion": "^12.40.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-markdown": "^10.1.0",
+    "recharts": "^3.8.1",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/d3": "^7.4.3",
+    "@types/marked": "^5.0.2",
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}
