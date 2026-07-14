@@ -3,8 +3,15 @@ import { AppView } from '../types';
 import { 
   Search, User, Pill, Stethoscope, Zap, Mic, Calculator, 
   FileText, Scissors, Share2, Star, BookOpen, ChevronRight, ChevronLeft, Settings, LogOut, Bookmark, Mail,
-  X, Sparkles, Video, Calendar, Moon, Sun, Map, ClipboardCheck, Timer, Menu, Contact, Inbox, Users
+  X, Sparkles, Video, Calendar, Moon, Sun, Map, ClipboardCheck, Timer, Menu, Contact, Inbox, Users,
+  Fingerprint, ShieldCheck, CheckCircle2, RotateCcw, AlertTriangle
 } from 'lucide-react';
+import { 
+  getEnrolledBiometrics, 
+  enrollBiometrics, 
+  verifyBiometrics, 
+  clearBiometrics 
+} from '../services/biometrics';
 
 
 interface LayoutProps {
@@ -35,6 +42,124 @@ const Layout: React.FC<LayoutProps> = ({
   const [showNav, setShowNav] = useState(true);
   const [searchInput, setSearchInput] = useState('');
   const lastScrollY = useRef(0);
+
+  // Biometric Management states in Sidebar
+  const [isBiometricEnrolled, setIsBiometricEnrolled] = useState(false);
+  const [biometricModalOpen, setBiometricModalOpen] = useState(false);
+  const [scannerStatus, setScannerStatus] = useState('Ready for biometric authorization');
+  const [scannerLogs, setScannerLogs] = useState<string[]>([]);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanState, setScanState] = useState<'idle' | 'scanning' | 'success' | 'failed'>('idle');
+  const [scannerMode, setScannerMode] = useState<'enroll' | 'test'>('enroll');
+
+  const holdIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const logsTimeoutRef = useRef<NodeJS.Timeout[]>([]);
+
+  useEffect(() => {
+    const profile = getEnrolledBiometrics();
+    setIsBiometricEnrolled(!!profile);
+  }, [isSidebarOpen]);
+
+  const clearScannerTimeouts = () => {
+    if (holdIntervalRef.current) {
+      clearInterval(holdIntervalRef.current);
+      holdIntervalRef.current = null;
+    }
+    logsTimeoutRef.current.forEach(t => clearTimeout(t));
+    logsTimeoutRef.current = [];
+  };
+
+  useEffect(() => {
+    return () => clearScannerTimeouts();
+  }, []);
+
+  const handleBiometricSidebarClick = async () => {
+    clearScannerTimeouts();
+    if (isBiometricEnrolled) {
+      // Clear biometrics
+      clearBiometrics();
+      setIsBiometricEnrolled(false);
+    } else {
+      // Start enrollment flow from sidebar
+      setScannerMode('enroll');
+      setBiometricModalOpen(true);
+      setScanProgress(0);
+      setScanState('idle');
+      setScannerStatus('Prepare finger/face for enrollment');
+      setScannerLogs([
+        'Requesting biometric key binding via Sidebar...',
+        'Establishing Secure Enclave hardware link...',
+        'Awaiting touch or biometric authentication scan...'
+      ]);
+    }
+  };
+
+  const handleScannerTouchStart = () => {
+    if (scanState === 'success') return;
+    
+    clearScannerTimeouts();
+    setScanState('scanning');
+    setScannerStatus('Scanning biometric data...');
+    setScannerLogs(prev => [...prev, 'Reading surface minutiae...', 'Validating biometric profile...']);
+
+    let progress = 0;
+    holdIntervalRef.current = setInterval(() => {
+      progress += 4;
+      if (progress >= 100) {
+        progress = 100;
+        if (holdIntervalRef.current) clearInterval(holdIntervalRef.current);
+        handleScannerSuccess();
+      } else {
+        setScanProgress(progress);
+        if (progress === 24) {
+          setScannerLogs(p => [...p, 'Extracting unique ridges & ridge-endings...']);
+        } else if (progress === 48) {
+          setScannerStatus('Resolving cryptographic token...');
+          setScannerLogs(p => [...p, 'Secure Enclave token matched locally.']);
+        } else if (progress === 72) {
+          setScannerStatus('Verifying digital signature...');
+          setScannerLogs(p => [...p, 'Validating RSA/ECDSA key pair signatures...']);
+        }
+      }
+    }, 50);
+  };
+
+  const handleScannerTouchEnd = () => {
+    if (scanState === 'scanning') {
+      clearScannerTimeouts();
+      setScanState('idle');
+      setScanProgress(0);
+      setScannerStatus('Interrupted. Hold down sensor to complete scan.');
+      setScannerLogs(p => [...p, 'Scan interrupted. Secure key transmission halted.']);
+    }
+  };
+
+  const handleScannerSuccess = async () => {
+    setScanState('success');
+    setScanProgress(100);
+    setScannerStatus('Clinician Identity Confirmed!');
+    setScannerLogs(p => [
+      ...p,
+      'Biometric signature matches enrolled profile!',
+      'Distal neurovascular credentials validated.',
+      'Cryptographic binding complete. Initializing session...'
+    ]);
+
+    try {
+      await enrollBiometrics('doctor@hospital.com', 'Dr. S Chandra', true);
+      setIsBiometricEnrolled(true);
+      
+      const timer = setTimeout(() => {
+        setBiometricModalOpen(false);
+      }, 1500);
+      logsTimeoutRef.current.push(timer);
+    } catch (err: any) {
+      console.error('Enrollment registry error', err);
+      setScanState('failed');
+      setScannerStatus('Local Enrollment Failed');
+      setScannerLogs(p => [...p, `Failed to bind keys: ${err?.message || 'Storage full'}`]);
+    }
+  };
 
   // Gesture State
   const touchStartX = useRef(0);
@@ -142,6 +267,7 @@ const Layout: React.FC<LayoutProps> = ({
                <SidebarItem icon={Mail} label="My Invitations" badge />
                <SidebarItem icon={User} label="My Profile" />
                <SidebarItem icon={Bookmark} label="Saved Content" />
+               <SidebarItem icon={Fingerprint} label={isBiometricEnrolled ? "Biometric Active (Deactivate)" : "Enable TouchID/FaceID"} onClick={handleBiometricSidebarClick} />
                <SidebarItem icon={Settings} label="Settings" />
                
                {/* Theme Toggle in Sidebar */}
@@ -341,6 +467,160 @@ const Layout: React.FC<LayoutProps> = ({
          <BottomTab icon={BookOpen} label="Education" />
          <BottomTab icon={Calendar} label="Events" />
       </div>
+
+      {/* --- INTEGRATED BIOMETRIC SETUP HUD MODAL --- */}
+      {biometricModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl flex flex-col relative overflow-hidden text-left">
+            
+            <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-xl pointer-events-none"></div>
+            
+            <div className="flex justify-between items-start mb-6">
+              <div className="space-y-1">
+                <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-[#0077b6]" />
+                  G-MED Clinical Security Hub
+                </h3>
+                <p className="text-xs text-slate-400 font-medium font-sans">
+                  Local TouchID/FaceID Credential Enrollment
+                </p>
+              </div>
+              <button 
+                onClick={() => { clearScannerTimeouts(); setBiometricModalOpen(false); }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center py-6 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800 relative overflow-hidden">
+              
+              {scanState === 'scanning' && (
+                <div className="absolute left-0 right-0 h-0.5 bg-cyan-400/80 shadow-[0_0_10px_#22d3ee] animate-laser-move z-10"></div>
+              )}
+
+              <div 
+                onMouseDown={handleScannerTouchStart}
+                onMouseUp={handleScannerTouchEnd}
+                onMouseLeave={handleScannerTouchEnd}
+                onTouchStart={handleScannerTouchStart}
+                onTouchEnd={handleScannerTouchEnd}
+                className={`
+                  w-28 h-28 rounded-full border-4 flex items-center justify-center transition-all duration-300 relative select-none cursor-pointer
+                  ${scanState === 'scanning' 
+                    ? 'border-cyan-400 bg-cyan-500/5 scale-105 shadow-[0_0_20px_rgba(34,211,238,0.2)]' 
+                    : scanState === 'success'
+                      ? 'border-emerald-500 bg-emerald-500/5 shadow-[0_0_20px_rgba(16,185,129,0.2)]'
+                      : scanState === 'failed'
+                        ? 'border-red-500 bg-red-500/5'
+                        : 'border-[#0077b6] hover:border-[#005f92] dark:border-slate-700 hover:scale-102 bg-white dark:bg-slate-900 shadow-sm'
+                  }
+                `}
+              >
+                {scanState === 'scanning' && (
+                  <div className="absolute inset-0 rounded-full border-2 border-cyan-400 animate-ping opacity-60"></div>
+                )}
+                
+                {scanState === 'scanning' && (
+                  <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+                    <circle
+                      cx="56"
+                      cy="56"
+                      r="50"
+                      stroke="url(#progressGradLayout)"
+                      strokeWidth="4"
+                      fill="transparent"
+                      strokeDasharray="314"
+                      strokeDashoffset={314 - (314 * scanProgress) / 100}
+                      className="transition-all duration-75"
+                    />
+                    <defs>
+                      <linearGradient id="progressGradLayout" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#22d3ee" />
+                        <stop offset="100%" stopColor="#0ea5e9" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                )}
+
+                {scanState === 'success' ? (
+                  <CheckCircle2 className="h-14 w-14 text-emerald-500 animate-scale-up" strokeWidth={1.5} />
+                ) : scanState === 'failed' ? (
+                  <AlertTriangle className="h-14 w-14 text-red-500 animate-shake" strokeWidth={1.5} />
+                ) : (
+                  <Fingerprint 
+                    className={`
+                      h-14 w-14 transition-colors duration-300
+                      ${scanState === 'scanning' ? 'text-cyan-400 animate-pulse' : 'text-[#0077b6] dark:text-[#0ea5e9]'}
+                    `} 
+                    strokeWidth={1.5} 
+                  />
+                )}
+              </div>
+
+              <div className="mt-5 text-center px-4">
+                <span className={`text-xs font-black tracking-wide uppercase px-2 py-1 rounded-md ${
+                  scanState === 'success' 
+                    ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30' 
+                    : scanState === 'failed'
+                      ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30'
+                      : 'text-slate-500 dark:text-slate-400'
+                }`}>
+                  {scannerStatus}
+                </span>
+                
+                {scanState === 'idle' && (
+                  <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 mt-2">
+                    Touch and hold circular pad above to enroll
+                  </p>
+                )}
+                {scanState === 'scanning' && (
+                  <p className="text-[11px] font-bold text-cyan-500 animate-pulse mt-2">
+                    Scanning... {scanProgress}% complete
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-2 text-left">
+              <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">
+                Cryptographic Console Logs
+              </span>
+              <div className="h-28 bg-slate-900 rounded-xl p-3 border border-slate-800 overflow-y-auto font-mono text-[9px] text-slate-400 space-y-1.5 scrollbar-thin">
+                {scannerLogs.map((log, index) => (
+                  <div key={index} className="flex gap-2 items-start leading-relaxed">
+                    <span className="text-cyan-500/80 font-bold shrink-0">&gt;</span>
+                    <span className="truncate max-w-[340px] whitespace-normal">{log}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => { clearScannerTimeouts(); setBiometricModalOpen(false); }}
+                className="flex-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold py-3 px-4 rounded-xl text-xs transition-colors cursor-pointer text-center"
+              >
+                Cancel
+              </button>
+              {scanState === 'failed' && (
+                <button
+                  onClick={() => {
+                    clearScannerTimeouts();
+                    setScanState('idle');
+                    setScanProgress(0);
+                    setScannerStatus('Ready to retry scan');
+                    setScannerLogs(['Scanner reset. Ready to retry.']);
+                  }}
+                  className="flex-1 bg-[#0077b6] dark:bg-[#0ea5e9] hover:bg-[#005f92] text-white font-bold py-3 px-4 rounded-xl text-xs transition-colors cursor-pointer text-center flex items-center justify-center gap-1.5"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> Retry
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

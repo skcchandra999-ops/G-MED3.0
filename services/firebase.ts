@@ -4,21 +4,70 @@ import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
+const databaseId = firebaseConfig.firestoreDatabaseId;
+if (!databaseId) {
+  console.warn("Warning: 'firestoreDatabaseId' is missing in firebase-applet-config.json.");
+}
+export const db = getFirestore(app, databaseId); /* CRITICAL: The app will break without this line */
 export const auth = getAuth(app);
 
-// Google Sign-In helper
+// Google Sign-In helper with Google Forms and Drive scopes
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('https://www.googleapis.com/auth/drive');
+googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
+googleProvider.addScope('https://www.googleapis.com/auth/drive.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/forms.body');
+googleProvider.addScope('https://www.googleapis.com/auth/forms.body.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/forms.responses.readonly');
+
+let cachedAccessToken: string | null = null;
+let isSigningIn = false;
 
 export async function signInWithGoogle() {
   try {
+    isSigningIn = true;
     const result = await signInWithPopup(auth, googleProvider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (!credential?.accessToken) {
+      console.warn("No access token returned from Google Auth popup");
+    } else {
+      cachedAccessToken = credential.accessToken;
+    }
     return result.user;
   } catch (error) {
     console.error("Error signing in with Google:", error);
     throw error;
+  } finally {
+    isSigningIn = false;
   }
 }
+
+export const getAccessToken = async (): Promise<string | null> => {
+  return cachedAccessToken;
+};
+
+export const setAccessToken = (token: string | null) => {
+  cachedAccessToken = token;
+};
+
+export const initAuth = (
+  onAuthSuccess?: (user: any, token: string) => void,
+  onAuthFailure?: () => void
+) => {
+  return auth.onAuthStateChanged(async (user) => {
+    if (user) {
+      if (cachedAccessToken) {
+        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+      } else if (!isSigningIn) {
+        // If logged in but no cached token, notify auth failure (requires re-auth for workspace)
+        if (onAuthFailure) onAuthFailure();
+      }
+    } else {
+      cachedAccessToken = null;
+      if (onAuthFailure) onAuthFailure();
+    }
+  });
+};
 
 export async function testConnection() {
   try {

@@ -13,6 +13,7 @@ import { marked } from 'marked';
 import { motion, AnimatePresence } from 'motion/react';
 import ProcedureTimer from './ProcedureTimer';
 import ExecutiveBriefingCard from './ExecutiveBriefingCard';
+import GoogleFormsManager from './GoogleFormsManager';
 
 type EMRTab = 'summary' | 'demographics' | 'history_exam' | 'investigations' | 'plan' | 'discharge' | 'daily_progress' | 'hub' | 'diagnosis' | 'pac' | 'consultation' | 'ot_plan' | 'operation' | 'post_op' | 'follow_up';
 
@@ -1577,7 +1578,7 @@ export default function MiniEMR() {
         return null;
     });
     const [isAnalyzingImage, setIsAnalyzingImage] = useState<string | null>(null);
-    const [viewMode, setViewMode] = useState<'dashboard' | 'list' | 'ward-summary' | 'ward-duties' | 'ot-list'>('dashboard');
+    const [viewMode, setViewMode] = useState<'dashboard' | 'list' | 'ward-summary' | 'ward-duties' | 'ot-list' | 'google-forms'>('dashboard');
     const [activeFilter, setActiveFilter] = useState<string | null>(null);
     const [notificationsOpen, setNotificationsOpen] = useState(false);
     const [notifications, setNotifications] = useState<string[]>([
@@ -7541,7 +7542,7 @@ AI-generated summary. Must be verified by the Resident/Attending.
                     <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-3 font-mono">
                         ★ G-MED Quick Services
                     </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                         <button
                             onClick={() => {
                                 setViewMode('list');
@@ -7586,6 +7587,21 @@ AI-generated summary. Must be verified by the Resident/Attending.
                             <div>
                                 <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Task Manager</span>
                                 <span className="text-[10px] text-slate-400">Intern & resident checklists</span>
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => {
+                                setViewMode('google-forms');
+                            }}
+                            className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3 hover:border-[#0077b6]/40 hover:shadow-md transition-all active:scale-95 group cursor-pointer text-left"
+                        >
+                            <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center text-[#0077b6] group-hover:bg-[#0077b6] group-hover:text-white transition-all shrink-0">
+                                <FileText className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Google Forms</span>
+                                <span className="text-[10px] text-slate-400">Intakes, surveys & logs</span>
                             </div>
                         </button>
                     </div>
@@ -8536,6 +8552,16 @@ AI-generated summary. Must be verified by the Resident/Attending.
                         renderWardDuties()
                     ) : viewMode === 'ot-list' ? (
                         renderOTList()
+                    ) : viewMode === 'google-forms' ? (
+                        <GoogleFormsManager
+                            patients={patients}
+                            onImportPatient={(newP) => {
+                                setPatients(prev => [newP, ...prev]);
+                            }}
+                            onUpdatePatient={(pId, updates) => {
+                                setPatients(prev => prev.map(p => p.id === pId ? { ...p, ...updates } : p));
+                            }}
+                        />
                     ) : selectedPatient ? (
                         <>
                             {/* Selected Patient Premium Clinical Header Banner */}
