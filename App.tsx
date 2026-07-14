@@ -10,7 +10,9 @@ import Procedures from './components/Procedures';
 import Calculators from './components/Calculators';
 import MiniEMR from './components/MiniEMR';
 import { AppView } from './types';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { auth, testConnection } from './services/firebase';
 
 interface ErrorBoundaryProps {
   children?: ReactNode;
@@ -69,10 +71,27 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
   // Navigation History Stack
   const [history, setHistory] = useState<AppView[]>([AppView.NEWS]);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [initialAiQuery, setInitialAiQuery] = useState('');
+
+  // Firebase connection and auth state sync
+  useEffect(() => {
+    testConnection();
+    
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+      }
+      setAuthLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const currentView = history[history.length - 1];
   const canGoBack = history.length > 1;
@@ -94,7 +113,12 @@ function App() {
     setIsAuthenticated(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error("Logout error", err);
+    }
     setIsAuthenticated(false);
     setHistory([AppView.NEWS]);
   };
@@ -142,6 +166,17 @@ function App() {
         return <NewsFeed />;
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-cyan-400">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-10 w-10 animate-spin mx-auto text-cyan-500" />
+          <p className="font-mono text-xs uppercase tracking-widest font-black">Authenticating Clinician...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ErrorBoundary>

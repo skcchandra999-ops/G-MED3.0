@@ -1,0 +1,58 @@
+{
+  "entities": {
+    "patient": {
+      "title": "Patient",
+      "description": "An orthopedic patient record under G-MED 3.0 residency management",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the patient"
+        },
+        "demographics": {
+          "type": "object",
+          "description": "Patient demographic data including name, age, sex, bed number"
+        },
+        "diagnosis": {
+          "type": "string",
+          "description": "Primary Orthopedic Diagnosis"
+        },
+        "comorbidities": {
+          "type": "array",
+          "description": "Co-morbid medical conditions"
+        },
+        "status": {
+          "type": "string",
+          "description": "Current medical status (e.g., Pre-Op, Post-Op)"
+        },
+        "plan": {
+          "type": "array",
+          "description": "Today's plan checklist items"
+        },
+        "attachments": {
+          "type": "array",
+          "description": "Patient radiographic or clinical attachments"
+        },
+        "tasks": {
+          "type": "array",
+          "description": "Daily progress task items"
+        },
+        "investigations": {
+          "type": "object",
+          "description": "Blood, urine, and imaging investigations"
+        },
+        "dailyNotes": {
+          "type": "array",
+          "description": "Historical progressive daily progress SOAP notes"
+        }
+      },
+      "required": ["id", "demographics", "diagnosis", "status"]
+    }
+  },
+  "firestore": {
+    "/patients/{patientId}": {
+      "schema": "patient",
+      "description": "The collection storing OrthoPatient records for residents and clinicians"
+    }
+  }
+}

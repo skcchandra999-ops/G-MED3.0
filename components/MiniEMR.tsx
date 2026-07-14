@@ -2,9 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { Users, Search, Plus, Stethoscope, AlertTriangle, FileText, CheckCircle, Clock, Trash2, Send, Loader2, Upload, Paperclip, Eye, Sparkles, Activity, Phone, CreditCard, LayoutDashboard, History, ClipboardList, Bell, Thermometer, Heart, Droplets, ChevronRight, ChevronDown, ChevronUp, Zap, Download, Printer, Save, Scissors, Mic, MicOff, Share2, Copy, Bold, Italic, List, ListOrdered, PlusCircle, AlertCircle, ShieldAlert, CheckSquare, Home, Calendar, Check } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
-import { OrthoPatient, PatientPlanItem, PatientAttachment, OrthoHistory, OrthoPhysicalExam, StructuredInvestigation } from '../types';
+import { OrthoPatient, PatientPlanItem, PatientAttachment, OrthoHistory, OrthoPhysicalExam, StructuredInvestigation, PatientTask } from '../types';
 import { parseShorthandToOrthopedicData, interpretXrayImage, generateDischargeSummaryFromAI, generateCourseOfHospitalStay, compareXrayImages } from '../services/geminiService';
 import { ORTHO_DIAGNOSES, PATIENT_STATUSES, COMORBIDITIES, SMART_SUGGESTIONS, COMMON_LABS, PRE_OP_CHECKLIST, ADMISSION_CHECKLIST, MORNING_PROGRESS_ITEMS, DAILY_WARD_DUTIES, COMMON_PROCEDURES, DANGER_SIGNS, ORTHO_CATEGORIES, ORTHO_CLASSIFICATIONS, SPECIAL_TESTS, MOI_OPTIONS, TIME_OPTIONS } from '../constants';
+import { collection, onSnapshot, setDoc, doc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { db, auth, handleFirestoreError, OperationType } from '../services/firebase';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { marked } from 'marked';
@@ -1877,10 +1879,64 @@ export default function MiniEMR() {
         return () => clearInterval(intervalId);
     }, [activeTab, selectedPatientId]);
 
-    // Save to local storage automatically on any patients state change with debounced visual status feedback
+    const lastFirestoreSyncRef = useRef<string>("");
+
+    // Subscribe to Firestore patients and initialize if completely empty
+    useEffect(() => {
+        const patientsCollection = collection(db, 'patients');
+        
+        const unsubscribe = onSnapshot(patientsCollection, (snapshot) => {
+            if (snapshot.empty) {
+                // If firestore is completely empty, initialize it with the current local state/InitialPatients
+                const batch = writeBatch(db);
+                patients.forEach((p) => {
+                    const patientDocRef = doc(db, 'patients', p.id);
+                    batch.set(patientDocRef, p);
+                });
+                batch.commit().then(() => {
+                    console.log("Firestore initialized with default patients.");
+                }).catch(err => {
+                    console.error("Failed to initialize default patients in Firestore", err);
+                });
+            } else {
+                const fetchedPatients: OrthoPatient[] = [];
+                snapshot.forEach((doc) => {
+                    fetchedPatients.push(doc.data() as OrthoPatient);
+                });
+                
+                // Sort by Sequence / ID to maintain consistent UI ordering
+                fetchedPatients.sort((a, b) => {
+                    const seqA = a.otSequence || 0;
+                    const seqB = b.otSequence || 0;
+                    if (seqA !== seqB) return seqA - seqB;
+                    return a.id.localeCompare(b.id);
+                });
+
+                const stringified = JSON.stringify(fetchedPatients);
+                if (stringified !== JSON.stringify(patients)) {
+                    lastFirestoreSyncRef.current = stringified;
+                    setPatients(fetchedPatients);
+                }
+            }
+        }, (err) => {
+            console.error("Firestore patients collection subscription error", err);
+            try {
+                handleFirestoreError(err, OperationType.LIST, 'patients');
+            } catch (e) {
+                // Catch standard error throw to avoid crashing the whole EMR component
+            }
+        });
+
+        return () => unsubscribe();
+    }, []);
+
+    // Save to local storage and Firestore automatically on any patients state change
     useEffect(() => {
         if (patients && patients.length > 0) {
+            // Instant offline recovery backup
             localStorage.setItem('gmed_patients', JSON.stringify(patients));
+            
+            // Visual feedback indicator
             setEmrSaveStatus('saving');
             const handler = setTimeout(() => {
                 setEmrSaveStatus('saved');
@@ -1892,6 +1948,46 @@ export default function MiniEMR() {
                 }, 2000);
                 return () => clearTimeout(idleHandler);
             }, 600);
+
+            // Cloud Firestore sync with batch updates and deleted document cleanup
+            const currentStringified = JSON.stringify(patients);
+            if (currentStringified !== lastFirestoreSyncRef.current) {
+                lastFirestoreSyncRef.current = currentStringified;
+                
+                const batch = writeBatch(db);
+                patients.forEach((p) => {
+                    const docRef = doc(db, 'patients', p.id);
+                    batch.set(docRef, p);
+                });
+                
+                batch.commit()
+                    .then(async () => {
+                        console.log("Firestore patients database synchronized.");
+                        try {
+                            const snapshot = await getDocs(collection(db, 'patients'));
+                            const localIds = new Set(patients.map(p => p.id));
+                            const deletePromises: Promise<void>[] = [];
+                            snapshot.forEach((d) => {
+                                if (!localIds.has(d.id)) {
+                                    deletePromises.push(deleteDoc(doc(db, 'patients', d.id)));
+                                }
+                            });
+                            if (deletePromises.length > 0) {
+                                await Promise.all(deletePromises);
+                                console.log("Cleaned up deleted patients in Firestore.");
+                            }
+                        } catch (err) {
+                            console.error("Firestore cleanup of deleted patients failed", err);
+                        }
+                    })
+                    .catch((err) => {
+                        console.error("Firestore patient batch sync failed", err);
+                        try {
+                            handleFirestoreError(err, OperationType.WRITE, 'patients');
+                        } catch (e) {}
+                    });
+            }
+
             return () => clearTimeout(handler);
         }
     }, [patients]);
@@ -8498,12 +8594,23 @@ AI-generated summary. Must be verified by the Resident/Attending.
                                                 onClick={() => {
                                                     localStorage.setItem('gmed_patients', JSON.stringify(patients));
                                                     setEmrSaveStatus('saving');
-                                                    setTimeout(() => {
-                                                        setEmrSaveStatus('saved');
-                                                        const now = new Date();
-                                                        setEmrLastSavedTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-                                                        setTimeout(() => setEmrSaveStatus('idle'), 2000);
-                                                    }, 500);
+                                                    
+                                                    const batch = writeBatch(db);
+                                                    patients.forEach((p) => {
+                                                        const docRef = doc(db, 'patients', p.id);
+                                                        batch.set(docRef, p);
+                                                    });
+                                                    batch.commit()
+                                                        .then(() => {
+                                                            setEmrSaveStatus('saved');
+                                                            const now = new Date();
+                                                            setEmrLastSavedTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+                                                            setTimeout(() => setEmrSaveStatus('idle'), 2000);
+                                                        })
+                                                        .catch(err => {
+                                                            console.error("Manual Cloud Sync failed", err);
+                                                            setEmrSaveStatus('idle');
+                                                        });
                                                 }}
                                                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wider transition-all border shadow-xs cursor-pointer ${
                                                     emrSaveStatus === 'saved' 
