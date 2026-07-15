@@ -252,12 +252,12 @@ export default function GoogleFormsManager({
         id: `note_${Date.now()}`,
         date: dateStr,
         vitals: {
-          temp: "37.0",
-          pulse: "80",
+          temp: 37.0,
+          pulse: 80,
           bp: "120/80",
-          rr: "16",
-          spo2: "98",
-          weight: "70",
+          rr: 16,
+          spo2: 98,
+          timestamp: new Date().toISOString()
         },
         subjective: subjectiveText,
         objective: "Surgical wound clean. Active neurovascular status distal intact.",

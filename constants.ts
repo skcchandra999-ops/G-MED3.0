@@ -108,17 +108,17 @@ export const ORTHO_CLASSIFICATIONS = [
 export const ORTHO_DIAGNOSES = Object.values(ORTHO_CATEGORIES).flat();
 
 export const PATIENT_STATUSES = [
-    "Pre-Op Workup",
-    "Planned for OT",
-    "Post-Op Day 0",
-    "Post-Op Day 1",
-    "Post-Op Day 2",
-    "Post-Op Day 3",
-    "Post-Op Day 4",
-    "Post-Op Day 5",
-    "Conservative Management",
-    "Ready for Discharge",
-    "Follow-up"
+    "Admitted",
+    "Pre-operative workup",
+    "Listed for OT",
+    "Sent to OT",
+    "Post-operative",
+    "Ward",
+    "ICU/SICU",
+    "Discharge planned",
+    "Discharged",
+    "Follow-up",
+    "Archived"
 ];
 
 export const MORNING_PROGRESS_ITEMS = [

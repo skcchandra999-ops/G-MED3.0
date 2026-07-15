@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
-import { Users, Search, Plus, Stethoscope, AlertTriangle, FileText, CheckCircle, Clock, Trash2, Send, Loader2, Upload, Paperclip, Eye, Sparkles, Activity, Phone, CreditCard, LayoutDashboard, History, ClipboardList, Bell, Thermometer, Heart, Droplets, ChevronRight, ChevronDown, ChevronUp, Zap, Download, Printer, Save, Scissors, Mic, MicOff, Share2, Copy, Bold, Italic, List, ListOrdered, PlusCircle, AlertCircle, ShieldAlert, CheckSquare, Home, Calendar, Check } from 'lucide-react';
+import { Users, Search, Plus, Stethoscope, AlertTriangle, FileText, CheckCircle, Clock, Trash2, Send, Loader2, Upload, Paperclip, Eye, Sparkles, Activity, Phone, CreditCard, LayoutDashboard, History, ClipboardList, Bell, Thermometer, Heart, Droplets, ChevronRight, ChevronDown, ChevronUp, Zap, Download, Printer, Save, Scissors, Mic, MicOff, Share2, Copy, Bold, Italic, List, ListOrdered, PlusCircle, AlertCircle, ShieldAlert, CheckSquare, Home, Calendar, Check, Timer, RotateCcw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
-import { OrthoPatient, PatientPlanItem, PatientAttachment, OrthoHistory, OrthoPhysicalExam, StructuredInvestigation, PatientTask } from '../types';
+import { OrthoPatient, PatientPlanItem, PatientAttachment, OrthoHistory, OrthoPhysicalExam, StructuredInvestigation, PatientTask, DailyProgressNote } from '../types';
 import { parseShorthandToOrthopedicData, interpretXrayImage, generateDischargeSummaryFromAI, generateCourseOfHospitalStay, compareXrayImages } from '../services/geminiService';
 import { ORTHO_DIAGNOSES, PATIENT_STATUSES, COMORBIDITIES, SMART_SUGGESTIONS, COMMON_LABS, PRE_OP_CHECKLIST, ADMISSION_CHECKLIST, MORNING_PROGRESS_ITEMS, DAILY_WARD_DUTIES, COMMON_PROCEDURES, DANGER_SIGNS, ORTHO_CATEGORIES, ORTHO_CLASSIFICATIONS, SPECIAL_TESTS, MOI_OPTIONS, TIME_OPTIONS } from '../constants';
 import { collection, onSnapshot, setDoc, doc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
@@ -14,6 +14,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import ProcedureTimer from './ProcedureTimer';
 import ExecutiveBriefingCard from './ExecutiveBriefingCard';
 import GoogleFormsManager from './GoogleFormsManager';
+import { GMedLogo } from './GMedLogo';
 
 type EMRTab = 'summary' | 'demographics' | 'history_exam' | 'investigations' | 'plan' | 'discharge' | 'daily_progress' | 'hub' | 'diagnosis' | 'pac' | 'consultation' | 'ot_plan' | 'operation' | 'post_op' | 'follow_up';
 
@@ -1600,6 +1601,22 @@ export default function MiniEMR() {
     const [copied, setCopied] = useState(false);
     const [headerCopied, setHeaderCopied] = useState(false);
 
+    // G-MED 3.0 Clinical Workflow Journey States
+    const [isJourneyModalOpen, setIsJourneyModalOpen] = useState(false);
+    const [selectedNewStatus, setSelectedNewStatus] = useState('');
+    const [statusChangeAuthor, setStatusChangeAuthor] = useState('Resident');
+    const [statusChangeNotes, setStatusChangeNotes] = useState('');
+
+    // Immersive scroll event helper
+    const lastScrollTopRef = useRef<Record<string, number>>({});
+    const handlePanelScroll = (id: string) => (e: React.UIEvent<HTMLDivElement>) => {
+        const scrollTop = e.currentTarget.scrollTop;
+        const lastScrollTop = lastScrollTopRef.current[id] || 0;
+        const deltaY = scrollTop - lastScrollTop;
+        lastScrollTopRef.current[id] = scrollTop;
+        window.dispatchEvent(new CustomEvent('gmedscroll', { detail: { deltaY } }));
+    };
+
     // Body Systems & ROS States
     const [selectedBodySystem, setSelectedBodySystem] = useState<string | null>(null);
     const [activeAdditionalOp, setActiveAdditionalOp] = useState<'pfsh' | 'questionnaire' | null>(null);
@@ -2011,22 +2028,22 @@ export default function MiniEMR() {
                 return p.demographics.admissionDate !== undefined;
             }
             if (f === 'under-evaluation') {
-                return p.status.toLowerCase().includes('evaluation') || p.status.toLowerCase().includes('eval') || p.status.toLowerCase().includes('workup');
+                return p.status.toLowerCase().includes('evaluation') || p.status.toLowerCase().includes('eval') || p.status.toLowerCase().includes('workup') || p.status.toLowerCase() === 'admitted';
             }
             if (f === 'conservative') {
-                return p.status.toLowerCase().includes('conservative');
+                return p.status.toLowerCase().includes('conservative') || p.status.toLowerCase() === 'ward';
             }
             if (f === 'pre-operative' || f === 'pre-op') {
-                return p.status.toLowerCase().includes('pre-op') || p.status.toLowerCase().includes('workup');
+                return p.status.toLowerCase().includes('pre-op') || p.status.toLowerCase().includes('workup') || p.status.toLowerCase().includes('listed') || p.status.toLowerCase() === 'admitted';
             }
             if (f === 'pac-pending') {
-                return (p.status.toLowerCase().includes('pre-op') || p.status.toLowerCase().includes('workup')) && p.pacStatus !== 'FIT' && p.pacStatus !== 'Accepted' && p.pacStatus !== 'Fit';
+                return (p.status.toLowerCase().includes('pre-op') || p.status.toLowerCase().includes('workup') || p.status.toLowerCase() === 'admitted') && p.pacStatus !== 'FIT' && p.pacStatus !== 'Accepted' && p.pacStatus !== 'Fit';
             }
             if (f === 'ot-planned') {
-                return !!p.otNumber || p.plan.some(it => /ot|surgery|orif|crif|nailing/i.test(it.text)) || p.status.toLowerCase().includes('planned');
+                return !!p.otNumber || p.plan.some(it => /ot|surgery|orif|crif|nailing/i.test(it.text)) || p.status.toLowerCase().includes('planned') || p.status.toLowerCase().includes('listed') || p.status.toLowerCase().includes('sent to ot');
             }
             if (f === 'post-operative' || f === 'post-op') {
-                return p.status.toLowerCase().includes('post-op');
+                return p.status.toLowerCase().includes('post-op') || p.status.toLowerCase().includes('post-operative') || p.status.toLowerCase().includes('icu') || p.status.toLowerCase().includes('sicu');
             }
             if (f === 'discharge-planned' || f === 'discharge') {
                 return p.status.toLowerCase().includes('discharge') || p.status.toLowerCase().includes('ready') || p.status.toLowerCase().includes('plan');
@@ -2072,7 +2089,7 @@ export default function MiniEMR() {
             
             setPatients(prev => prev.map(p => {
                 if (p.id === selectedPatient?.id) {
-                    return {
+                    const mergedPatient: OrthoPatient = {
                         ...p,
                         ...updatedData,
                         id: p.id,
@@ -2081,6 +2098,7 @@ export default function MiniEMR() {
                         plan: updatedData.plan && updatedData.plan.length > 0 ? (updatedData.plan as PatientPlanItem[]) : p.plan,
                         history: updatedData.history ? { ...(p.history || {}), ...updatedData.history } : p.history,
                         physicalExam: updatedData.physicalExam ? { 
+                            general: p.physicalExam?.general || 'Well-nourished, alert and oriented.',
                             ...(p.physicalExam || {}), 
                             ...updatedData.physicalExam,
                             vitals: {
@@ -2088,11 +2106,15 @@ export default function MiniEMR() {
                                 ...(updatedData.physicalExam?.vitals || {})
                             },
                             localExam: {
+                                inspection: p.physicalExam?.localExam?.inspection || '',
+                                palpation: p.physicalExam?.localExam?.palpation || '',
+                                movements: p.physicalExam?.localExam?.movements || '',
+                                neurovascular: p.physicalExam?.localExam?.neurovascular || '',
                                 ...(p.physicalExam?.localExam || {}),
                                 ...(updatedData.physicalExam?.localExam || {})
                             }
                         } : p.physicalExam
-                    };
+                    } as OrthoPatient;
 
                     // Background auto-generation of discharge note to keep it updated seamlessly
                     setTimeout(() => {
@@ -2152,7 +2174,16 @@ export default function MiniEMR() {
             },
             diagnosis: 'Undiagnosed',
             comorbidities: [],
-            status: 'Admission',
+            status: 'Admitted',
+            statusHistory: [
+                {
+                    id: 'sh-' + Date.now().toString(),
+                    status: 'Admitted',
+                    changedBy: 'Resident',
+                    changedAt: new Date().toLocaleString(),
+                    comments: 'Admitted via residency EMR portal'
+                }
+            ],
             history: {
                 chiefComplaint: '', hpi: '', pmh: '', psh: '', medications: '', allergies: '', socialHistory: ''
             },
@@ -2265,8 +2296,8 @@ export default function MiniEMR() {
         const xray1 = selectedPatient.attachments.find(a => a.id === compareXray1Id);
         const xray2 = selectedPatient.attachments.find(a => a.id === compareXray2Id);
         
-        const shareTitle = `Radiographic Comparison Report - ${selectedPatient.name}`;
-        const shareText = `G-MED 3.0 Clinical Radiographic Comparison Report for patient ${selectedPatient.name} (ID: ${selectedPatient.hospitalId || 'N/A'}).\n\nCompared X-rays:\n- Image A: ${xray1?.name || 'Baseline'}\n- Image B: ${xray2?.name || 'Follow-up'}\n\nComparative Analysis Summary:\n${comparisonSummary}\n\nAI-generated summary. Must be verified by the Resident/Attending.`;
+        const shareTitle = `Radiographic Comparison Report - ${selectedPatient.demographics.name}`;
+        const shareText = `G-MED 3.0 Clinical Radiographic Comparison Report for patient ${selectedPatient.demographics.name} (ID: ${selectedPatient.demographics.hospitalId || 'N/A'}).\n\nCompared X-rays:\n- Image A: ${xray1?.name || 'Baseline'}\n- Image B: ${xray2?.name || 'Follow-up'}\n\nComparative Analysis Summary:\n${comparisonSummary}\n\nAI-generated summary. Must be verified by the Resident/Attending.`;
 
         if (navigator.share) {
             try {
@@ -2934,6 +2965,44 @@ export default function MiniEMR() {
 
     const updatePatient = (patientId: string, updates: Partial<OrthoPatient>) => {
         setPatients(prev => prev.map(p => p.id === patientId ? { ...p, ...updates } : p));
+    };
+
+    const handleStatusTransition = (patientId: string, newStatus: string, changedBy: string, comments: string) => {
+        const patient = patients.find(p => p.id === patientId);
+        if (!patient) return;
+
+        const transitionEntry = {
+            id: 'sh-' + Date.now().toString(),
+            status: newStatus,
+            changedBy: changedBy || 'Resident',
+            changedAt: new Date().toLocaleString(),
+            comments: comments || ''
+        };
+
+        const currentHistory = patient.statusHistory || [];
+        const updatedHistory = [...currentHistory, transitionEntry];
+
+        updatePatient(patientId, {
+            status: newStatus,
+            statusHistory: updatedHistory
+        });
+    };
+
+    const handleRollbackTransition = (patientId: string, entryId: string) => {
+        const patient = patients.find(p => p.id === patientId);
+        if (!patient) return;
+
+        const currentHistory = patient.statusHistory || [];
+        const updatedHistory = currentHistory.filter(entry => entry.id !== entryId);
+
+        const previousStatus = updatedHistory.length > 0 
+            ? updatedHistory[updatedHistory.length - 1].status 
+            : 'Admitted';
+
+        updatePatient(patientId, {
+            status: previousStatus,
+            statusHistory: updatedHistory
+        });
     };
 
     const updateDemographics = (patientId: string, updates: Partial<OrthoPatient['demographics']>) => {
@@ -4825,7 +4894,7 @@ export default function MiniEMR() {
         }));
     };
 
-    const updateDailyNote = (patientId: string, noteId: string, updates: Partial<OrthoPatient['dailyNotes' & number]>) => {
+    const updateDailyNote = (patientId: string, noteId: string, updates: Partial<DailyProgressNote>) => {
         setPatients(prev => prev.map(p => {
             if (p.id === patientId) {
                 return {
@@ -6284,7 +6353,7 @@ AI-generated summary. Must be verified by the Resident/Attending.
         };
 
         return (
-            <div className="flex-1 overflow-auto p-4 md:p-6 bg-[#E4E3E0] dark:bg-slate-950 font-sans print:bg-white print:p-0">
+            <div className="flex-1 overflow-visible md:overflow-auto p-4 md:p-6 bg-[#E4E3E0] dark:bg-slate-950 font-sans print:bg-white print:p-0">
                 <div className="max-w-7xl mx-auto space-y-6">
                     {/* Official Hospital Header (Styled similarly to standard paper medical registers) */}
                     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-sm text-center relative overflow-hidden print:border-0 print:shadow-none print:p-0">
@@ -6762,7 +6831,7 @@ AI-generated summary. Must be verified by the Resident/Attending.
     };
 
     const renderWardDuties = () => (
-        <div className="flex-1 overflow-auto p-6 bg-[#F8FAFC] dark:bg-slate-950">
+        <div className="flex-1 overflow-visible md:overflow-auto p-6 bg-[#F8FAFC] dark:bg-slate-950">
             <div className="max-w-4xl mx-auto">
                 <div className="flex items-center justify-between mb-8">
                     <div>
@@ -6908,7 +6977,7 @@ AI-generated summary. Must be verified by the Resident/Attending.
         );
 
         return (
-            <div className="flex-1 overflow-auto p-6 bg-[#E4E3E0] dark:bg-slate-950 font-sans">
+            <div className="flex-1 overflow-visible md:overflow-auto p-6 bg-[#E4E3E0] dark:bg-slate-950 font-sans">
                 <div className="max-w-7xl mx-auto">
                     <div className="flex items-center justify-between mb-8">
                         <div>
@@ -7536,7 +7605,10 @@ AI-generated summary. Must be verified by the Resident/Attending.
         ];
 
         return (
-            <div className="flex-1 bg-slate-50 dark:bg-slate-950 p-4 md:p-6 overflow-y-auto font-sans">
+            <div 
+                onScroll={handlePanelScroll('dashboard')}
+                className="flex-1 bg-slate-50 dark:bg-slate-950 p-4 md:p-6 overflow-visible md:overflow-y-auto font-sans"
+            >
                 {/* 1. Quick Manager Navigation */}
                 <div className="mb-6">
                     <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-3 font-mono">
@@ -8348,13 +8420,13 @@ AI-generated summary. Must be verified by the Resident/Attending.
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-80px)] md:h-[calc(100vh-140px)] print:h-auto print:overflow-visible print:border-none print:shadow-none bg-[#f8fafc] dark:bg-slate-950 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-800 overflow-hidden mx-4 md:mx-0 mt-4 md:mt-0 font-sans">
+        <div className="flex flex-col min-h-[100dvh] md:h-[calc(100vh-140px)] print:h-auto print:overflow-visible print:border-none print:shadow-none bg-[#f8fafc] dark:bg-slate-950 rounded-none md:rounded-2xl shadow-lg md:border border-slate-200 dark:border-slate-800 overflow-visible md:overflow-hidden mx-0 md:mx-0 mt-0 md:mt-0 font-sans">
             
             {/* 1. Laxmi Bank Style Dashboard Header */}
             <div className="bg-white dark:bg-slate-900 px-4 md:px-6 py-4 border-b border-slate-200/80 dark:border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden shrink-0">
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-[#0077b6] flex items-center justify-center text-white shadow-sm border border-[#0077b6]/20">
-                        <Activity className="h-5 w-5 text-white stroke-[2.5]" />
+                        <GMedLogo className="text-white" size={22} colorClass="text-white" />
                     </div>
                     <div>
                         <h2 className="text-base font-black text-slate-800 dark:text-slate-200 dark:text-white tracking-tight flex items-center gap-2">
@@ -8446,9 +8518,9 @@ AI-generated summary. Must be verified by the Resident/Attending.
             </div>
 
             {/* 2. Main EMR Workspace Area */}
-            <div className="flex flex-1 overflow-hidden min-h-0 relative">
+            <div className="flex flex-1 overflow-visible md:overflow-hidden min-h-0 relative">
                 {/* Sidebar Panel: Show only during 'list' mode, hide if patient selected on mobile */}
-                <div className={`w-full md:w-80 lg:w-96 border-r border-slate-200 dark:border-slate-800/80 bg-slate-50/55 dark:bg-slate-900/40 flex flex-col print:hidden shrink-0 ${viewMode === 'list' ? (selectedPatientId ? 'hidden md:flex' : 'flex') : 'hidden'}`}>
+                <div className={`w-full md:w-80 lg:w-96 border-r border-slate-200 dark:border-slate-800/80 bg-slate-50/55 dark:bg-slate-900/40 flex flex-col print:hidden shrink-0 overflow-visible md:overflow-hidden ${viewMode === 'list' ? (selectedPatientId ? 'hidden md:flex' : 'flex') : 'hidden'}`}>
                     <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
                         <div className="flex gap-2 mb-3">
                             <button 
@@ -8471,7 +8543,10 @@ AI-generated summary. Must be verified by the Resident/Attending.
                     </div>
                     
                     {/* Patient List Cards */}
-                    <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/50">
+                    <div 
+                        onScroll={handlePanelScroll('sidebar')} 
+                        className="flex-1 overflow-visible md:overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/50"
+                    >
                         {filteredPatients.length > 0 ? (
                             filteredPatients.map(patient => {
                                 const initials = patient.demographics.name.split(' ').map(nByVal => nByVal[0]).join('').substring(0, 2).toUpperCase();
@@ -8497,13 +8572,15 @@ AI-generated summary. Must be verified by the Resident/Attending.
                                                         <AlertTriangle className="h-3.5 w-3.5 text-red-500 animate-bounce" />
                                                     )}
                                                     {patient.quickNotes && patient.quickNotes.trim().length > 0 && (
-                                                        <FileText className={`h-3.5 w-3.5 filter drop-shadow-[0_0_2px_rgba(245,158,11,0.2)] ${
-                                                            patient.quickNotesCategory === 'Urgent'
-                                                                ? 'text-rose-500 animate-pulse'
-                                                                : patient.quickNotesCategory === 'Routine'
-                                                                ? 'text-amber-500'
-                                                                : 'text-sky-500'
-                                                        }`} title={`Active Temporary Quick Notes (${patient.quickNotesCategory || 'General'})`} />
+                                                        <span title={`Active Temporary Quick Notes (${patient.quickNotesCategory || 'General'})`}>
+                                                            <FileText className={`h-3.5 w-3.5 filter drop-shadow-[0_0_2px_rgba(245,158,11,0.2)] ${
+                                                                patient.quickNotesCategory === 'Urgent'
+                                                                    ? 'text-rose-500 animate-pulse'
+                                                                    : patient.quickNotesCategory === 'Routine'
+                                                                    ? 'text-amber-500'
+                                                                    : 'text-sky-500'
+                                                            }`} />
+                                                        </span>
                                                     )}
                                                     <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">#{patient.demographics.sbhNumber}</span>
                                                 </div>
@@ -8543,7 +8620,7 @@ AI-generated summary. Must be verified by the Resident/Attending.
                 </div>
 
                 {/* Main Active Panel: Dashboard / Ward Summary / Ward Duties / Selected Patient Record */}
-                <div className={`flex-1 flex flex-col min-w-0 print:block print:w-full print:h-auto print:overflow-visible bg-white dark:bg-slate-950/25 ${(viewMode === 'list' || viewMode === 'dashboard') && !selectedPatientId ? 'flex' : 'flex'}`}>
+                <div className={`flex-1 flex flex-col min-w-0 print:block print:w-full print:h-auto print:overflow-visible bg-white dark:bg-slate-950/25 overflow-visible md:overflow-hidden ${(viewMode === 'list' || viewMode === 'dashboard') && !selectedPatientId ? 'flex' : 'flex'}`}>
                     {viewMode === 'dashboard' ? (
                         renderDashboard()
                     ) : viewMode === 'ward-summary' ? (
@@ -8590,6 +8667,36 @@ AI-generated summary. Must be verified by the Resident/Attending.
                                                 <span className="text-[10px] font-black px-2 py-0.5 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg font-mono">
                                                     {selectedPatient.demographics.age}Y · {selectedPatient.demographics.sex.toUpperCase()}
                                                 </span>
+                                                {(() => {
+                                                    const s = selectedPatient.status;
+                                                    let badgeStyle = "bg-amber-500 text-white hover:bg-amber-600";
+                                                    if (s === "Admitted") badgeStyle = "bg-blue-500 text-white hover:bg-blue-600";
+                                                    if (s === "Pre-operative workup") badgeStyle = "bg-purple-500 text-white hover:bg-purple-600";
+                                                    if (s === "Listed for OT") badgeStyle = "bg-indigo-500 text-white hover:bg-indigo-600";
+                                                    if (s === "Sent to OT") badgeStyle = "bg-rose-500 text-white hover:bg-rose-600 animate-pulse";
+                                                    if (s === "Post-operative") badgeStyle = "bg-emerald-500 text-white hover:bg-emerald-600";
+                                                    if (s === "Ward") badgeStyle = "bg-teal-500 text-white hover:bg-teal-600";
+                                                    if (s === "ICU/SICU") badgeStyle = "bg-red-600 text-white hover:bg-red-700 animate-pulse";
+                                                    if (s === "Discharge planned") badgeStyle = "bg-yellow-500 text-slate-900 hover:bg-yellow-600";
+                                                    if (s === "Discharged") badgeStyle = "bg-slate-500 text-white hover:bg-slate-600";
+                                                    if (s === "Follow-up") badgeStyle = "bg-sky-500 text-white hover:bg-sky-600";
+                                                    if (s === "Archived") badgeStyle = "bg-slate-700 text-white hover:bg-slate-800";
+                                                    
+                                                    return (
+                                                        <button 
+                                                            onClick={() => {
+                                                                setSelectedNewStatus(s);
+                                                                setStatusChangeNotes('');
+                                                                setIsJourneyModalOpen(true);
+                                                            }}
+                                                            className={`text-[10px] font-black px-2.5 py-0.5 rounded-lg font-sans flex items-center gap-1 transition-all cursor-pointer shadow-xs ${badgeStyle}`}
+                                                            title="Change Patient Workflow Status & Timeline"
+                                                        >
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-white opacity-80" />
+                                                            {s}
+                                                        </button>
+                                                    );
+                                                })()}
                                             </div>
                                             <div className="flex flex-wrap items-center gap-2 mt-2.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                                                 <span className="flex items-center gap-1 px-2.5 py-1 bg-sky-50 dark:bg-sky-950/20 text-[#0077b6] dark:text-sky-400 rounded-lg border border-sky-100 dark:border-sky-900/30">
@@ -8682,13 +8789,25 @@ AI-generated summary. Must be verified by the Resident/Attending.
                                                     <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
                                                         <button 
                                                             onClick={() => {
-                                                                updatePatient(selectedPatient.id, { status: "Ready for Discharge" });
+                                                                setSelectedNewStatus(selectedPatient.status);
+                                                                setStatusChangeNotes('');
+                                                                setIsJourneyModalOpen(true);
+                                                                setQuickActionsOpen(false);
+                                                            }}
+                                                            className="w-full flex items-center gap-2 px-4 py-3 text-xs font-bold text-[#0077b6] dark:text-sky-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                                                        >
+                                                            <Activity className="h-4 w-4 text-[#0077b6] dark:text-sky-400" />
+                                                            Change Status / Move Patient
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => {
+                                                                updatePatient(selectedPatient.id, { status: "Discharge planned" });
                                                                 setQuickActionsOpen(false);
                                                             }}
                                                             className="w-full flex items-center gap-2 px-4 py-3 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                                                         >
                                                             <CheckCircle className="h-4 w-4 text-emerald-500" />
-                                                            Mark Ready for Discharge
+                                                            Mark Discharge planned
                                                         </button>
                                                         <button 
                                                             onClick={() => {
@@ -8792,7 +8911,10 @@ AI-generated summary. Must be verified by the Resident/Attending.
                             </div> 
 
                             {/* 4. Active Tab Interactive Canvas Section */}
-                            <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50/50 dark:bg-slate-950/20 print:overflow-visible print:p-0 print:block print:bg-white relative">
+                            <div 
+                                onScroll={handlePanelScroll('canvas')}
+                                className="flex-1 overflow-visible md:overflow-y-auto p-4 md:p-6 bg-slate-50/50 dark:bg-slate-950/20 print:overflow-visible print:p-0 print:block print:bg-white relative"
+                            >
                                 {activeTab === 'summary' && renderSummary(selectedPatient)}
                                 {activeTab === 'demographics' && renderDemographics(selectedPatient)}
                                 {activeTab === 'history_exam' && renderHistoryExam(selectedPatient)}
@@ -8893,6 +9015,166 @@ AI-generated summary. Must be verified by the Resident/Attending.
                                     Post Update
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* G-MED 3.0 Clinical Workflow & Status Transition Modal */}
+            {isJourneyModalOpen && selectedPatient && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[85vh]">
+                        {/* Header */}
+                        <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-[#0077b6] text-white shrink-0">
+                            <div className="flex items-center gap-2">
+                                <Activity className="h-5 w-5 animate-pulse" />
+                                <div>
+                                    <h3 className="text-sm font-black uppercase tracking-wider">Clinical Workflow Journey</h3>
+                                    <p className="text-[10px] text-blue-100 font-medium">G-MED 3.0 Patient Transition Portal</p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setIsJourneyModalOpen(false)}
+                                className="text-white/80 hover:text-white font-extrabold text-sm p-1 hover:bg-white/10 rounded"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        
+                        {/* Scrollable Content */}
+                        <div className="p-6 overflow-y-auto space-y-6 flex-1 text-left">
+                            
+                            {/* Patient Info Card */}
+                            <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
+                                <div>
+                                    <h4 className="text-sm font-black text-slate-800 dark:text-white">{selectedPatient.demographics.name}</h4>
+                                    <p className="text-[11px] text-slate-500 font-mono">Bed: {selectedPatient.demographics.bedNumber || 'N/A'} · Hospital ID: {selectedPatient.demographics.hospitalId || 'N/A'} · SBH: {selectedPatient.demographics.sbhNumber}</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase">Current Status:</span>
+                                    <span className="text-xs font-black px-3 py-1 bg-[#0077b6]/10 text-[#0077b6] dark:text-sky-400 rounded-lg border border-[#0077b6]/20 uppercase tracking-wide">
+                                        {selectedPatient.status}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Transition Form */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Target Clinical Status</label>
+                                    <select
+                                        value={selectedNewStatus}
+                                        onChange={(e) => setSelectedNewStatus(e.target.value)}
+                                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 text-xs md:text-sm text-slate-800 dark:text-slate-200 dark:text-white focus:ring-1 focus:ring-[#0077b6] outline-none"
+                                    >
+                                        {PATIENT_STATUSES.map(status => (
+                                            <option key={status} value={status}>{status}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Authorized Clinician Role</label>
+                                    <select
+                                        value={statusChangeAuthor}
+                                        onChange={(e) => setStatusChangeAuthor(e.target.value)}
+                                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 text-xs md:text-sm text-slate-800 dark:text-slate-200 dark:text-white focus:ring-1 focus:ring-[#0077b6] outline-none"
+                                    >
+                                        <option value="Resident">Resident</option>
+                                        <option value="Senior Resident">Senior Resident</option>
+                                        <option value="Attending">Attending</option>
+                                        <option value="Nurse">Nurse</option>
+                                        <option value="OT In-charge">OT In-charge</option>
+                                    </select>
+                                </div>
+                                <div className="md:col-span-2 space-y-1.5">
+                                    <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">Handover Notes / Comments</label>
+                                    <textarea
+                                        value={statusChangeNotes}
+                                        onChange={(e) => setStatusChangeNotes(e.target.value)}
+                                        placeholder="Enter clinical reason or handover notes for this transition..."
+                                        rows={2}
+                                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 text-xs md:text-sm text-slate-800 dark:text-slate-200 dark:text-white focus:ring-1 focus:ring-[#0077b6] outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                                <button
+                                    onClick={() => {
+                                        handleStatusTransition(selectedPatient.id, selectedNewStatus, statusChangeAuthor, statusChangeNotes);
+                                        setStatusChangeNotes('');
+                                        setIsJourneyModalOpen(false);
+                                    }}
+                                    className="px-5 py-2.5 bg-[#0077b6] hover:bg-[#005f92] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer flex items-center gap-1.5 shadow-sm"
+                                >
+                                    <Check className="h-4 w-4" /> Move Patient / Commit
+                                </button>
+                            </div>
+
+                            {/* Journey Timeline History Log */}
+                            <div className="space-y-3">
+                                <h4 className="text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                                    <Clock className="h-4 w-4 text-[#0077b6]" />
+                                    Clinical Journey Audit Trail
+                                </h4>
+                                
+                                {(!selectedPatient.statusHistory || selectedPatient.statusHistory.length === 0) ? (
+                                    <p className="text-xs text-slate-400 italic py-4 text-center">No status transitions logged yet.</p>
+                                ) : (
+                                    <div className="relative border-l-2 border-slate-200 dark:border-slate-800 ml-3 pl-5 space-y-5 py-2">
+                                        {selectedPatient.statusHistory.map((log) => (
+                                            <div key={log.id} className="relative group text-left">
+                                                {/* Timeline dot */}
+                                                <div className="absolute -left-[27px] top-1 w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-white dark:border-slate-900 shadow-xs" />
+                                                
+                                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50/50 dark:bg-slate-800/30 p-3 rounded-lg border border-slate-100/80 dark:border-slate-800/60 shadow-xs">
+                                                    <div>
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <span className="text-xs font-black text-[#0077b6] dark:text-sky-400 uppercase tracking-wide">
+                                                                {log.status}
+                                                            </span>
+                                                            <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded font-bold">
+                                                                Role: {log.changedBy}
+                                                            </span>
+                                                            <span className="text-[10px] text-slate-400 font-mono font-medium">
+                                                                {log.changedAt}
+                                                            </span>
+                                                        </div>
+                                                        {log.comments && (
+                                                            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1.5 italic font-sans">
+                                                                “{log.comments}”
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {/* Rollback / Correction button */}
+                                                    <button
+                                                        onClick={() => {
+                                                            if (confirm(`Are you sure you want to rollback this transition to "${log.status}"? This will return the patient to the previous status.`)) {
+                                                                handleRollbackTransition(selectedPatient.id, log.id);
+                                                            }
+                                                        }}
+                                                        className="px-2 py-1 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 font-bold text-[10px] rounded border border-red-100 dark:border-red-900/30 cursor-pointer flex items-center gap-1 shrink-0 self-start sm:self-center transition-all opacity-70 hover:opacity-100"
+                                                        title="Rollback to this state"
+                                                    >
+                                                        <RotateCcw className="h-3 w-3" />
+                                                        Rollback
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Safety Disclaimer */}
+                            <div className="bg-amber-50/45 dark:bg-amber-950/10 border border-amber-100/50 dark:border-amber-900/30 p-3.5 rounded-xl flex items-start gap-2.5">
+                                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-normal font-sans">
+                                    <strong className="text-slate-700 dark:text-slate-300">Safety Notice:</strong> AI-generated summary. Must be verified by the Resident/Attending. Transitions are committed instantly to the local and synchronized Cloud databases.
+                                </p>
+                            </div>
+
                         </div>
                     </div>
                 </div>

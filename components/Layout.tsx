@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AppView } from '../types';
+import { GMedLogo } from './GMedLogo';
 import { 
   Search, User, Pill, Stethoscope, Zap, Mic, Calculator, 
   FileText, Scissors, Share2, Star, BookOpen, ChevronRight, ChevronLeft, Settings, LogOut, Bookmark, Mail,
   X, Sparkles, Video, Calendar, Moon, Sun, Map, ClipboardCheck, Timer, Menu, Contact, Inbox, Users,
-  Fingerprint, ShieldCheck, CheckCircle2, RotateCcw, AlertTriangle
+  Fingerprint, ShieldCheck, CheckCircle2, RotateCcw, AlertTriangle, StickyNote, Activity
 } from 'lucide-react';
 import { 
   getEnrolledBiometrics, 
@@ -167,24 +168,33 @@ const Layout: React.FC<LayoutProps> = ({
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
-  // Scroll Detection for sticky nav
+  // Scroll Detection for sticky nav (Window & Custom Panel scrolling)
   useEffect(() => {
-    const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      if (Math.abs(currentScrollY - lastScrollY.current) < 10) return;
+    const handleScroll = (e: Event) => {
+      let deltaY = 0;
+      if (e.type === 'gmedscroll' && (e as CustomEvent).detail) {
+        deltaY = (e as CustomEvent).detail.deltaY;
+      } else {
+        const currentScrollY = window.scrollY;
+        deltaY = currentScrollY - lastScrollY.current;
+        lastScrollY.current = currentScrollY;
+      }
 
-      if (currentScrollY < 20) {
-        setShowNav(true);
-      } else if (currentScrollY > lastScrollY.current) {
+      if (Math.abs(deltaY) < 10) return;
+
+      if (deltaY > 0) {
         setShowNav(false);
-      } else if (currentScrollY < lastScrollY.current) {
+      } else {
         setShowNav(true);
       }
-      lastScrollY.current = currentScrollY;
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+    window.addEventListener('gmedscroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('gmedscroll', handleScroll);
+    };
   }, []);
 
   // Gesture Handlers
@@ -227,6 +237,7 @@ const Layout: React.FC<LayoutProps> = ({
   // Navigation Items
   const navItems = [
     { id: 'patients', view: AppView.EMR, label: 'Mini EMR', icon: Users },
+    { id: 'keep_notes', view: AppView.KEEP, label: 'Google Keep', icon: StickyNote },
     { id: 'drugs', view: AppView.DRUGS, label: 'Drugs', icon: Pill },
     { id: 'conditions', view: AppView.SCORES, label: 'Conditions', icon: Stethoscope },
     // New Items
@@ -428,6 +439,47 @@ const Layout: React.FC<LayoutProps> = ({
           )}
       </div>
 
+      {/* --- COMPACT STICKY BAR FOR MINI EMR IMMERSIVE MODE --- */}
+      {currentView === AppView.EMR && !isVisible && (
+        <div className="sticky top-0 z-40 w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 px-4 py-2 flex items-center justify-between gap-3 animate-fade-in shadow-xs">
+          <div className="flex items-center gap-2">
+            <button onClick={onBack} className="w-8 h-8 bg-slate-100 dark:bg-slate-850 rounded-full flex items-center justify-center text-[#0077b6] dark:text-[#0ea5e9] border border-slate-200/40 dark:border-slate-800/40 cursor-pointer">
+              <ChevronLeft className="h-5 w-5 stroke-[2.5px]" />
+            </button>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-md bg-[#0077b6] flex items-center justify-center text-white shadow-xs">
+                <GMedLogo className="text-white" size={14} colorClass="text-white" />
+              </div>
+              <div className="flex flex-col text-left justify-center leading-none">
+                <span className="text-xs font-black text-[#0077b6] dark:text-sky-400 tracking-tight font-mono">G-MED 3.0</span>
+                <span className="text-[7px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-mono">Mini EMR</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex-1 max-w-xs relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search patients..." 
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSearchSubmit();
+              }}
+              className="w-full text-xs pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-850 rounded-full text-slate-850 dark:text-white outline-none border border-slate-200 dark:border-slate-700/80 focus:ring-1 focus:ring-[#0077b6]"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center relative border border-slate-200/40 dark:border-slate-700/40">
+              <Inbox className="h-4 w-4 text-[#0077b6] dark:text-sky-400" />
+              <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* --- SEARCH OVERLAY OR MAIN CONTENT --- */}
       {isSearchActive ? (
           <div className="fixed inset-0 top-[65px] bg-white dark:bg-slate-950 z-20 overflow-y-auto animate-fade-in p-4">
@@ -478,7 +530,7 @@ const Layout: React.FC<LayoutProps> = ({
             <div className="flex justify-between items-start mb-6">
               <div className="space-y-1">
                 <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  <Activity className="h-5 w-5 text-[#0077b6]" />
+                  <GMedLogo size={22} />
                   G-MED Clinical Security Hub
                 </h3>
                 <p className="text-xs text-slate-400 font-medium font-sans">

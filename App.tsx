@@ -9,6 +9,7 @@ import Bundles from './components/Bundles';
 import Procedures from './components/Procedures';
 import Calculators from './components/Calculators';
 import MiniEMR from './components/MiniEMR';
+import { GoogleKeepManager } from './components/GoogleKeepManager';
 import { AppView } from './types';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -74,7 +75,13 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   // Navigation History Stack
   const [history, setHistory] = useState<AppView[]>([AppView.NEWS]);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('gmed_dark_mode');
+    if (saved !== null) {
+      return saved === 'true';
+    }
+    return true; // Default to Dark Mode as requested
+  });
   const [initialAiQuery, setInitialAiQuery] = useState('');
 
   // Firebase connection and auth state sync
@@ -96,17 +103,18 @@ function App() {
   const currentView = history[history.length - 1];
   const canGoBack = history.length > 1;
 
-  // Apply dark class to html element
+  // Apply dark class to html element & persist preference
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
+    localStorage.setItem('gmed_dark_mode', isDarkMode ? 'true' : 'false');
   }, [isDarkMode]);
 
   const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
+    setIsDarkMode(prev => !prev);
   };
 
   const handleLogin = () => {
@@ -160,6 +168,8 @@ function App() {
         return <Calculators />;
       case AppView.EMR:
         return <MiniEMR />;
+      case AppView.KEEP:
+        return <GoogleKeepManager onNavigate={handleNavigate} />;
       case AppView.CLINICAL_ASSISTANT:
         return <ClinicalAssistant initialQuery={initialAiQuery} onClearQuery={() => setInitialAiQuery('')} />;
       default:

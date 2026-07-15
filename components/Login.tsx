@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { GMedLogo } from './GMedLogo';
 import { 
   Eye, 
   EyeOff, 
@@ -286,7 +287,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
              <div className="relative flex-shrink-0">
                   {/* Logo Icon Container - Straight (no rotation) */}
                   <div className="w-14 h-14 bg-gradient-to-br from-[#0077b6] to-[#005f92] rounded-xl shadow-lg flex items-center justify-center">
-                     <Activity className="h-7 w-7 text-white" strokeWidth={2.5} />
+                     <GMedLogo className="text-white animate-pulse" size={32} colorClass="text-white" />
                   </div>
                   {/* Decorative element */}
                   <div className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-cyan-400 rounded-full border-2 border-slate-50 dark:border-slate-950"></div>
@@ -499,7 +500,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <div className="flex justify-between items-start mb-6">
               <div className="space-y-1">
                 <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  <Activity className="h-5 w-5 text-[#0077b6]" />
+                  <GMedLogo size={22} />
                   G-MED Clinical Security Hub
                 </h3>
                 <p className="text-xs text-slate-400 font-medium">

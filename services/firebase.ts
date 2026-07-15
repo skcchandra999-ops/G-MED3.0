@@ -4,7 +4,7 @@ import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-const databaseId = firebaseConfig.firestoreDatabaseId;
+const databaseId = (firebaseConfig as any).firestoreDatabaseId;
 if (!databaseId) {
   console.warn("Warning: 'firestoreDatabaseId' is missing in firebase-applet-config.json.");
 }

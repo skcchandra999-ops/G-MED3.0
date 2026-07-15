@@ -126,10 +126,10 @@ export default function ExecutiveBriefingCard({
     const ageSex = `${patient.demographics.age}Y/${patient.demographics.sex}`;
     const bed = `Bed ${patient.demographics.bedNumber || '---'}`;
     const todaysPlans = patient.plan && patient.plan.length > 0
-      ? patient.plan.map(p => `• ${p.title || p.text}`).join('\n')
+      ? patient.plan.map(p => `• ${p.text}`).join('\n')
       : '• PAC\n• Consent\n• OT Tomorrow';
     const pendingItems = patient.plan && patient.plan.filter(p => p.status === 'pending').length > 0
-      ? patient.plan.filter(p => p.status === 'pending').map(p => `☐ ${p.title || p.text}`).join('\n')
+      ? patient.plan.filter(p => p.status === 'pending').map(p => `☐ ${p.text}`).join('\n')
       : '☐ Blood\n☐ Implant\n☐ Consent';
 
     return `PATIENT SUMMARY\n\n` +
@@ -201,12 +201,12 @@ export default function ExecutiveBriefingCard({
   // Add default items if patient plan is empty to match user style
   const initializeSamplePlan = () => {
     const samples: PatientPlanItem[] = [
-      { id: 'sample-p1', category: 'Resident', title: 'PAC', assignedTo: 'Resident', priority: 'Urgent', status: 'done' },
-      { id: 'sample-p2', category: 'Resident', title: 'Consent', assignedTo: 'Resident', priority: 'Urgent', status: 'done' },
-      { id: 'sample-p3', category: 'Resident', title: 'OT Tomorrow', assignedTo: 'Resident', priority: 'Urgent', status: 'done' },
-      { id: 'sample-p4', category: 'Intern', title: 'Blood', assignedTo: 'Intern', priority: 'Routine', status: 'pending' },
-      { id: 'sample-p5', category: 'Resident', title: 'Implant', assignedTo: 'Resident', priority: 'Urgent', status: 'pending' },
-      { id: 'sample-p6', category: 'Resident', title: 'Consent Verification', assignedTo: 'Resident', priority: 'Urgent', status: 'pending' }
+      { id: 'sample-p1', text: 'PAC', status: 'done' },
+      { id: 'sample-p2', text: 'Consent', status: 'done' },
+      { id: 'sample-p3', text: 'OT Tomorrow', status: 'done' },
+      { id: 'sample-p4', text: 'Blood', status: 'pending' },
+      { id: 'sample-p5', text: 'Implant', status: 'pending' },
+      { id: 'sample-p6', text: 'Consent Verification', status: 'pending' }
     ];
     updatePatient(patient.id, { plan: samples });
   };
@@ -450,7 +450,7 @@ export default function ExecutiveBriefingCard({
                     {patient.plan.map((item) => (
                       <li key={item.id} className="flex items-start gap-1.5 leading-relaxed">
                         <span className="text-emerald-500">•</span>
-                        <span>{item.title || item.text}</span>
+                        <span>{item.text}</span>
                       </li>
                     ))}
                   </ul>
@@ -488,7 +488,7 @@ export default function ExecutiveBriefingCard({
                         <span className="w-4 h-4 rounded border border-slate-700 flex items-center justify-center shrink-0 group-hover:border-amber-500 text-[10px]">
                           ☐
                         </span>
-                        <span>{item.title || item.text}</span>
+                        <span>{item.text}</span>
                       </button>
                     ))}
                   </div>

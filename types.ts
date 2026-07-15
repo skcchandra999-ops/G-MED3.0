@@ -46,7 +46,8 @@ export enum AppView {
   BUNDLES = 'BUNDLES', 
   PROCEDURES = 'PROCEDURES', 
   CLINICAL_ASSISTANT = 'CLINICAL_ASSISTANT',
-  EMR = 'EMR'
+  EMR = 'EMR',
+  KEEP = 'KEEP'
 }
 
 export type CalculatorType = 
@@ -196,13 +197,13 @@ export interface MedicalQuestionnaireItem {
 }
 
 export interface OrthoPhysicalExam {
-    general: string;
+    general?: string;
     vitals?: OrthoVitals;
     localExam: {
-        inspection: string;
-        palpation: string;
-        movements: string;
-        neurovascular: string;
+        inspection?: string;
+        palpation?: string;
+        movements?: string;
+        neurovascular?: string;
         specialTests?: string;
     };
     bodySystems?: Record<string, BodySystemExam>;
@@ -330,5 +331,6 @@ export interface OrthoPatient {
     pacNotFitReasonChecklist?: string[];
     consultSpecialty?: string;
     consultStatus?: 'Requested' | 'Seen' | 'Advice Given' | 'Follow-up' | 'Completed';
+    statusHistory?: { id: string; status: string; changedBy: string; changedAt: string; comments?: string }[];
 }
 
